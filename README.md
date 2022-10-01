@@ -10,8 +10,8 @@ Here are the current design requirements:
 3. Create a pluggable Physical Transport layer to allow any physical interface to be used (E.g. Aardvark I2C adapter,
 or local TTY port).
 4. Allow network to be defined in some configurable manner (e.g. # of endpoints and network configuration).
-5. Capture meaningful metrics about runtime to facilitate automated test requirements (E.g. report # of detected endpoints,
-# of control messages received, # of invalid commands received, did discovery complete successfully, any dropped packets, ...).
+5. Capture meaningful metrics about runtime to facilitate automated test requirements (E.g. report # of detected
+endpoints, # of control messages received, # of invalid commands received, did discovery complete successfully, any dropped packets, ...).
 
 
 ## Open task list
