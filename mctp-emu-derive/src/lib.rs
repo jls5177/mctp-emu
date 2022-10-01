@@ -32,7 +32,7 @@ pub fn add_binary_derives(
 ) -> proc_macro::TokenStream {
     let input: proc_macro2::TokenStream = input.into();
     let output = quote! {
-        #[derive(Serialize, Deserialize, FromBinary)]
+        #[derive(serde::Serialize, serde::Deserialize, mctp_emu_derive::FromBinary)]
         #input
     };
     output.into()
@@ -48,23 +48,11 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
 
-        // impl From<Vec<u8>> for #ident {
-        //     fn from(vec: Vec<u8>) -> Self {
-        //         bincode::deserialize(&vec[..]).unwrap()
-        //     }
-        // }
-
-        impl From<#ident> for Bytes {
+        impl From<#ident> for bytes::Bytes {
             fn from(t: #ident) -> Self {
-                Bytes::from(bincode::serialize(&t).unwrap())
+                bytes::Bytes::from(bincode::serialize(&t).unwrap())
             }
         }
-
-        // impl From<Bytes> for #ident {
-        //     fn from(bytes: Bytes) -> Self {
-        //         bincode::deserialize(bytes.as_ref()).unwrap()
-        //     }
-        // }
 
         impl TryFrom<Vec<u8>> for #ident {
             type Error = ParseError;
@@ -82,9 +70,9 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
 
-        impl TryFrom<Bytes> for #ident {
+        impl TryFrom<bytes::Bytes> for #ident {
             type Error = ParseError;
-            fn try_from(bytes: Bytes) -> std::result::Result<Self, Self::Error> {
+            fn try_from(bytes: bytes::Bytes) -> std::result::Result<Self, Self::Error> {
                 let struct_size = std::mem::size_of::<#ident>();
                 if bytes.len() < struct_size {
                     return Err(ParseError::InvalidPayloadSize {
@@ -108,7 +96,7 @@ pub fn add_from_control_payload_derives(
 ) -> proc_macro::TokenStream {
     let input: proc_macro2::TokenStream = input.into();
     let output = quote! {
-        #[derive(Serialize, Deserialize, FromControlPayload)]
+        #[derive(serde::Serialize, serde::Deserialize, mctp_emu_derive::FromControlPayload)]
         #input
     };
     output.into()
@@ -118,7 +106,7 @@ pub fn add_from_control_payload_derives(
 pub fn derive_control_msg_response(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let DeriveInput { ident, .. } = parse_macro_input!(input);
     let output = quote! {
-        impl ControlMsgReponseStatus for #ident {
+        impl crate::control::ControlMsgReponseStatus for #ident {
             fn is_success(&self) -> anyhow::Result<()> {
                 if CompletionCode::from(self.completion_code) != CompletionCode::Success {
                     return Err(Error::msg(format!(
@@ -147,29 +135,17 @@ pub fn derive_control_payload(input: proc_macro::TokenStream) -> proc_macro::Tok
             }
         }
 
-        // impl From<Vec<u8>> for #ident {
-        //     fn from(vec: Vec<u8>) -> Self {
-        //         bincode::deserialize(&vec[..]).unwrap()
-        //     }
-        // }
-
-        impl From<#ident> for Bytes {
+        impl From<#ident> for bytes::Bytes {
             fn from(t: #ident) -> Self {
                 let ser = bincode::serialize(&t).unwrap();
                 println!("DEBUG: {:#?}", ser);
-                Bytes::from(ser)
+                bytes::Bytes::from(ser)
             }
         }
 
-        // impl From<Bytes> for #ident {
-        //     fn from(bytes: Bytes) -> Self {
-        //         bincode::deserialize(bytes.as_ref()).unwrap()
-        //     }
-        // }
-
-        impl TryFrom<Bytes> for #ident {
+        impl TryFrom<bytes::Bytes> for #ident {
             type Error = ParseError;
-            fn try_from(bytes: Bytes) -> std::result::Result<Self, Self::Error> {
+            fn try_from(bytes: bytes::Bytes) -> std::result::Result<Self, Self::Error> {
                 let struct_size = std::mem::size_of::<#ident>();
                 if bytes.len() < struct_size {
                     return Err(ParseError::InvalidPayloadSize {
@@ -206,10 +182,10 @@ pub fn derive_control_payload(input: proc_macro::TokenStream) -> proc_macro::Tok
 pub fn derive_deserialize_u8_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let DeriveInput { ident, .. } = parse_macro_input!(input);
     let output = quote! {
-        impl<'de> Deserialize<'de> for #ident {
+        impl<'de> serde::Deserialize<'de> for #ident {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
             where
-                D: Deserializer<'de>,
+                D: serde::Deserializer<'de>,
             {
                 let val = u8::deserialize(deserializer)?;
                 Ok(#ident::from(val))
@@ -223,10 +199,10 @@ pub fn derive_deserialize_u8_enum(input: proc_macro::TokenStream) -> proc_macro:
 pub fn derive_serialize_u8_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let DeriveInput { ident, .. } = parse_macro_input!(input);
     let output = quote! {
-        impl Serialize for #ident {
+        impl serde::Serialize for #ident {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where
-                S: Serializer,
+                S: serde::Serializer,
             {
                 serializer.serialize_u8(*self as u8)
             }

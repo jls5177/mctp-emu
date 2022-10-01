@@ -21,7 +21,11 @@ use mctp_base_lib::{
         ControlMsgReponseStatus, *,
     },
 };
-use mctp_emu::hex_dump::print_buf;
+use mctp_emu::{
+    endpoint::{MctpFlowList, MsgFlowTag},
+    hex_dump::print_buf,
+    Responder,
+};
 
 #[derive(Debug)]
 enum PhysicalTransportCommands {
@@ -34,8 +38,6 @@ enum PhysicalTransportCommands {
         resp: Option<Responder<Bytes>>,
     },
 }
-
-type Responder<T> = oneshot::Sender<io::Result<T>>;
 
 #[derive(Debug, Default)]
 #[allow(non_camel_case_types, unused)]
@@ -373,18 +375,6 @@ impl MctpEndpointContext {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Ord, PartialOrd, Eq)]
-#[allow(non_camel_case_types, unused)]
-pub struct MsgTag {
-    dest_eid: u8,
-    src_eid: u8,
-    msg_tag: u8,
-    tag_owner: bool,
-}
-
-pub type MctpFlow = (MsgTag, Responder<Bytes>);
-pub type MctpFlowList = Vec<MctpFlow>;
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let recv_addr = "localhost:5559";
@@ -439,12 +429,12 @@ async fn main() -> Result<()> {
         }
     });
 
-    let create_tag = |bytes: Bytes| -> Option<MsgTag> {
+    let create_tag = |bytes: Bytes| -> Option<MsgFlowTag> {
         if bytes.len() < 4 {
-            return Some(MsgTag::default());
+            return Some(MsgFlowTag::default());
         }
         match TransportHeader::try_from(bytes) {
-            Ok(hdr) => Some(MsgTag {
+            Ok(hdr) => Some(MsgFlowTag {
                 dest_eid: hdr.destination_eid,
                 src_eid: hdr.source_eid,
                 msg_tag: hdr.msg_tag(),

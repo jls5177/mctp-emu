@@ -1,9 +1,5 @@
 use anyhow::Error;
-use c2rust_bitfields::BitfieldStruct;
 use cascade::cascade;
-use mctp_emu_derive::*;
-use num_enum::FromPrimitive;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     base::*,
@@ -11,7 +7,15 @@ use crate::{
 };
 
 #[derive(
-    Debug, PartialEq, Eq, Copy, Clone, DeserializeU8Enum, SerializeU8Enum, FromPrimitive,
+    Debug,
+    PartialEq,
+    Eq,
+    Copy,
+    Clone,
+    Default,
+    mctp_emu_derive::DeserializeU8Enum,
+    mctp_emu_derive::SerializeU8Enum,
+    num_enum::FromPrimitive,
 )]
 #[repr(u8)]
 pub enum Operation {
@@ -21,8 +25,8 @@ pub enum Operation {
     GetAllocationInfo = 2,
 }
 
-#[derive(Copy, Clone, BitfieldStruct, Debug, PartialEq, Eq, Default)]
-#[add_from_control_payload_derives]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, c2rust_bitfields::BitfieldStruct)]
+#[mctp_emu_derive::add_from_control_payload_derives]
 #[repr(C, packed)]
 pub struct Request {
     pub hdr: ControlMsgHeader,
@@ -34,7 +38,12 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(hdr: ControlMsgHeader, operation: Operation, number_of_eids: uint8_t, starting_eid: uint8_t) -> Self {
+    pub fn new(
+        hdr: ControlMsgHeader,
+        operation: Operation,
+        number_of_eids: uint8_t,
+        starting_eid: uint8_t,
+    ) -> Self {
         cascade! {
             Self {
                 hdr,
@@ -48,7 +57,15 @@ impl Request {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, Copy, Clone, DeserializeU8Enum, SerializeU8Enum, FromPrimitive,
+    Debug,
+    PartialEq,
+    Eq,
+    Copy,
+    Clone,
+    Default,
+    mctp_emu_derive::DeserializeU8Enum,
+    mctp_emu_derive::SerializeU8Enum,
+    num_enum::FromPrimitive,
 )]
 #[repr(u8)]
 pub enum AllocationStatus {
@@ -57,8 +74,17 @@ pub enum AllocationStatus {
     AllocationRejected = 1,
 }
 
-#[derive(Copy, Clone, BitfieldStruct, Debug, PartialEq, Eq, Default, AddControlMsgResponse)]
-#[add_from_control_payload_derives]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Default,
+    c2rust_bitfields::BitfieldStruct,
+    mctp_emu_derive::AddControlMsgResponse,
+)]
+#[mctp_emu_derive::add_from_control_payload_derives]
 #[repr(C, packed)]
 pub struct Response {
     pub hdr: ControlMsgHeader,

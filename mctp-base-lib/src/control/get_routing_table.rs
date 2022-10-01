@@ -1,17 +1,13 @@
 use anyhow::Error;
-use c2rust_bitfields::BitfieldStruct;
 use cascade::cascade;
-use mctp_emu_derive::*;
-use num_enum::FromPrimitive;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     base::*,
     control::{enums::*, models::*, *},
 };
 
-#[derive(Copy, Clone, BitfieldStruct, Debug, PartialEq, Eq, Default)]
-#[add_from_control_payload_derives]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, c2rust_bitfields::BitfieldStruct)]
+#[mctp_emu_derive::add_from_control_payload_derives]
 #[repr(C, packed)]
 pub struct Request {
     pub hdr: ControlMsgHeader,
@@ -20,15 +16,21 @@ pub struct Request {
 
 impl Request {
     pub fn new(hdr: ControlMsgHeader, entry_handle: uint8_t) -> Self {
-        Self {
-            hdr,
-            entry_handle,
-        }
+        Self { hdr, entry_handle }
     }
 }
 
-#[derive(Copy, Clone, BitfieldStruct, Debug, PartialEq, Eq, Default, AddControlMsgResponse)]
-#[add_from_control_payload_derives]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Default,
+    c2rust_bitfields::BitfieldStruct,
+    mctp_emu_derive::AddControlMsgResponse,
+)]
+#[mctp_emu_derive::add_from_control_payload_derives]
 #[repr(C, packed)]
 pub struct Response {
     pub hdr: ControlMsgHeader,

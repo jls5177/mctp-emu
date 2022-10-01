@@ -1,9 +1,8 @@
-use c2rust_bitfields::BitfieldStruct;
 use cascade::cascade;
-use mctp_emu_derive::{add_binary_derives, FromBinary};
+use mctp_base_lib::base::*;
 
-#[derive(Copy, Clone, BitfieldStruct, Debug, PartialEq, Eq, Default)]
-#[add_binary_derives]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, c2rust_bitfields::BitfieldStruct)]
+#[mctp_emu_derive::add_binary_derives]
 #[repr(C, packed)]
 pub struct SmbusPhysTransportHeader {
     #[bitfield(name = "header_version", ty = "uint8_t", bits = "0..=3")]

@@ -29,7 +29,9 @@ extern crate c2rust_bitfields;
 use std::io;
 use tokio::sync::oneshot;
 
+pub mod endpoint;
 pub mod hex_dump;
 pub mod network;
+pub mod phys;
 
 pub type Responder<T> = oneshot::Sender<io::Result<T>>;
