@@ -7,18 +7,18 @@ use cascade::cascade;
 use mctp_emu_derive::*;
 use num_enum::FromPrimitive;
 use serde::Deserializer;
+use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::io;
 use std::ops::Index;
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, MutexGuard};
+use tokio::task::JoinHandle;
 
-use crate::network::{types::*, Error, NetDevice, Result};
-use crate::MctpEmuResult;
 use mctp_base_lib::{
     base::*,
     control::{
@@ -28,23 +28,81 @@ use mctp_base_lib::{
     },
 };
 
-#[derive(Debug, Default)]
-pub struct VirtualNetwork<T>
-where
-    T: NetDevice + Debug,
-{
-    clients: Arc<RwLock<Vec<Arc<RwLock<Client>>>>>,
+use crate::{
+    network::{types::*, Error, NetDevice, Result},
+    MctpEmuEmptyResult, MctpEmuResult,
+};
+
+#[derive(Debug, derive_builder::Builder)]
+#[builder(private, pattern = "owned")]
+pub struct VirtualNetwork {
+    clients: Arc<RwLock<Vec<ClientHandle>>>,
     num_clients: AtomicU16,
     routes: Arc<RwLock<Vec<Arc<Route>>>>,
-    net_devs: Arc<RwLock<Vec<Arc<T>>>>,
+    net_devs: Arc<RwLock<Vec<NetworkBindingHandle>>>,
+    num_bindings: AtomicU64,
+    callback_handles: Arc<RwLock<Vec<JoinHandle<MctpEmuEmptyResult>>>>,
+    rx_callback: Sender<NetworkBindingCallbackMsg>,
 }
 
-impl<T> VirtualNetwork<T>
-where
-    T: NetDevice + Debug + Default,
-{
-    pub fn new() -> Arc<VirtualNetwork<T>> {
-        Arc::new(VirtualNetwork::default())
+impl VirtualNetwork {
+    pub fn new_mctp_network() -> MctpEmuResult<MctpNetworkHandle> {
+        let network = VirtualNetwork::new()?;
+        Ok(network)
+    }
+
+    fn new() -> MctpEmuResult<Arc<Self>> {
+        let (sender, mut receiver) = mpsc::channel::<NetworkBindingCallbackMsg>(32);
+
+        let builder = VirtualNetworkBuilder::default().rx_callback(sender);
+        let mut network: VirtualNetwork = match builder.build() {
+            Ok(n) => n,
+            Err(err) => {
+                return Err(
+                    Error::Other(anyhow!("failed building VirtualNetwork: {:?}", err)).into(),
+                )
+            }
+        };
+        let network = Arc::new(network);
+
+        let network2 = network.clone();
+        let callback_handle =
+            tokio::spawn(async move { network2.callback_handler(receiver).await });
+
+        // store callback handle
+        {
+            network
+                .callback_handles
+                .write()
+                .unwrap()
+                .push(callback_handle);
+        }
+
+        Ok(network)
+    }
+
+    async fn callback_handler(
+        &self,
+        mut receiver: Receiver<NetworkBindingCallbackMsg>,
+    ) -> MctpEmuEmptyResult {
+        loop {
+            while let Some(cmd) = receiver.recv().await {
+                println!("Received cmd: {:?}", cmd);
+                match cmd {
+                    NetworkBindingCallbackMsg::Receive { id, buf } => {}
+                }
+            }
+        }
+    }
+
+    fn get_binding(&self, binding_id: u64) -> Result<NetworkBindingHandle> {
+        if binding_id < (self.num_bindings.load(Ordering::SeqCst) as u64 - 1) {
+            return Err(Error::InvalidBindingError { binding_id });
+        }
+        match self.net_devs.read().unwrap().get(binding_id as usize) {
+            Some(binding) => Ok(binding.clone()),
+            None => Err(Error::InvalidBindingError { binding_id }),
+        }
     }
 
     fn get_client(&self, sd: int32_t) -> MctpEmuResult<Arc<RwLock<Client>>> {
@@ -75,10 +133,8 @@ where
     }
 }
 
-impl<T> MctpNetwork<T> for VirtualNetwork<T>
-where
-    T: NetDevice + Debug + Default,
-{
+#[async_trait::async_trait]
+impl MctpNetwork for VirtualNetwork {
     fn socket(&self) -> int32_t {
         let sd = self.num_clients.fetch_add(1, Ordering::SeqCst);
         {
@@ -109,13 +165,31 @@ where
         todo!()
     }
 
-    fn add_netdev(&self, netdev: T) -> MctpEmuResult<uint32_t> {
-        let mut net_devs = self.net_devs.write().unwrap();
-        net_devs.push(Arc::new(netdev));
-        Ok(net_devs.len() as uint32_t - 1)
+    async fn add_physical_binding(&self, binding: NetworkBindingHandle) -> MctpEmuEmptyResult {
+        let bind_id = self.num_bindings.fetch_add(1, Ordering::SeqCst);
+        {
+            self.net_devs.write().unwrap().push(binding.clone());
+        }
+
+        let handle = match binding.lock().await.bind(bind_id, self.rx_callback.clone()) {
+            Ok(handle) => handle,
+            Err(err) => {
+                return Err(Error::Other(anyhow!("failed calling binding: {:?}", err)).into())
+            }
+        };
+
+        {
+            self.callback_handles.write().unwrap().push(handle);
+        }
+
+        Ok(())
     }
 
-    fn add_physical_binding(&self, binding: Box<dyn NetworkBinding>) -> crate::MctpEmuEmptyResult {
-        todo!()
+    fn join_handles(&self) -> Vec<JoinHandle<MctpEmuEmptyResult>> {
+        let mut handles = Vec::new();
+        for hdl in self.callback_handles.write().unwrap().drain(..) {
+            handles.push(hdl);
+        }
+        handles
     }
 }

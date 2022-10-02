@@ -1,5 +1,7 @@
 pub mod dynamic;
+mod error;
 pub mod simple;
-pub mod types;
+mod types;
 
+pub use error::*;
 pub use types::*;

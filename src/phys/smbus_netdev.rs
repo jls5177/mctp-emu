@@ -1,29 +1,30 @@
+use anyhow::anyhow;
 use bytes::{BufMut, BytesMut};
 use cascade::cascade;
-use mctp_base_lib::base::*;
 use smbus_pec::pec;
 use std::io;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+
+use mctp_base_lib::base::*;
 
 use crate::{
     hex_dump::print_buf,
     network::{NetworkBinding, NetworkBindingCallbackMsg},
-    phys::{Error, Result},
+    phys::{smbus_types::*, Error, Result},
     MctpEmuEmptyResult, MctpEmuResult,
 };
-
-const SMBUS_COMMAND_CODE_MCTP: u8 = 0x0f;
 
 async fn poll_socket(
     socket: Arc<UdpSocket>,
     network_id: u64,
     rx_callback: Sender<NetworkBindingCallbackMsg>,
-) -> Result<()> {
+) -> MctpEmuEmptyResult {
     loop {
         let mut buf_request: [u8; 4 * 1024] = [0; 4 * 1024];
         let (len, _) = socket.recv_from(&mut buf_request).await.unwrap();
@@ -59,21 +60,23 @@ fn validate_smbus_address(addr: u64) -> MctpEmuEmptyResult {
     Ok(())
 }
 
+pub type SmbusBindingHandle = Arc<tokio::sync::Mutex<SmbusNetDevBinding>>;
+
 #[derive(Debug, Default)]
-pub struct Binding {
+pub struct SmbusNetDevBinding {
     address: u8,
     network_id: AtomicU64,
     socket: Option<Arc<UdpSocket>>,
 }
 
-impl Binding {
+impl SmbusNetDevBinding {
     pub async fn new(
         recv_sock_addr: String,
         send_sock_addr: String,
         address: u8,
-    ) -> MctpEmuResult<Self> {
+    ) -> MctpEmuResult<SmbusBindingHandle> {
         let mut binding = cascade! {
-            let binding = Binding::default();
+            let binding = Self::default();
             ..set_address(address);
         };
 
@@ -87,7 +90,7 @@ impl Binding {
             .map_err(Error::SocketError)?;
         binding.socket = Some(Arc::new(socket));
 
-        Ok(binding)
+        Ok(Arc::new(Mutex::new(binding)))
     }
 
     fn set_address(&mut self, address: u8) -> MctpEmuEmptyResult {
@@ -97,7 +100,7 @@ impl Binding {
     }
 }
 
-impl NetworkBinding for Binding {
+impl NetworkBinding for SmbusNetDevBinding {
     fn transmit(&self, msg: Bytes, phy_addr: u64) -> MctpEmuEmptyResult {
         validate_smbus_address(phy_addr)?;
         if msg.len() >= 256 {
@@ -110,7 +113,7 @@ impl NetworkBinding for Binding {
         let mut tx_buf = BytesMut::new();
         let hdr = SmbusPhysTransportHeader::new(dest_addr, self.address, msg_length);
         let hdr_bytes = Bytes::from(hdr);
-        tx_buf.put(hdr_bytes.clone());
+        tx_buf.put(hdr_bytes);
         tx_buf.put(msg.clone());
         tx_buf.put_slice(&[pec(msg.as_ref())]);
 
@@ -138,36 +141,16 @@ impl NetworkBinding for Binding {
         &mut self,
         id: u64,
         rx_callback: Sender<NetworkBindingCallbackMsg>,
-    ) -> MctpEmuResult<()> {
+    ) -> MctpEmuResult<JoinHandle<MctpEmuEmptyResult>> {
         self.network_id.store(id, Ordering::SeqCst);
 
-        let socket = self.socket.as_ref().unwrap().clone();
-        tokio::spawn(async move {
-            poll_socket(socket, id, rx_callback).await;
-        });
+        let socket = match self.socket.as_ref() {
+            Some(socket) => socket.clone(),
+            None => return Err(Error::Other(anyhow!("failed grabbing socket vector")).into()),
+        };
+        let handle = tokio::spawn(async move { poll_socket(socket, id, rx_callback).await });
 
-        Ok(())
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, c2rust_bitfields::BitfieldStruct)]
-#[mctp_emu_derive::add_binary_derives]
-#[repr(C, packed)]
-pub struct SmbusPhysTransportHeader {
-    dest_addr: u8,
-    command_code: u8,
-    byte_count: u8,
-    src_addr: u8,
-}
-
-impl SmbusPhysTransportHeader {
-    pub fn new(dest_addr_7bit: u8, src_addr_7bit: u8, byte_count: u8) -> Self {
-        SmbusPhysTransportHeader {
-            dest_addr: dest_addr_7bit << 1,
-            command_code: SMBUS_COMMAND_CODE_MCTP,
-            byte_count,
-            src_addr: src_addr_7bit << 1 | 0x01,
-        }
+        Ok(handle)
     }
 }
 

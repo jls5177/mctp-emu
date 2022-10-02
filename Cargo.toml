@@ -7,15 +7,18 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.65"
+async-trait = "0.1.57"
 bincode = "1.3.3"
 bytes = { version = "1.2.1", features = ["serde"] }
 c2rust-bitfields = "0.3.0"
 cascade = "1.0.0"
+derive_builder = "0.11.2"
 hexyl = "0.10.0"
 mctp-base-lib = { version = "0.1.0", path = "mctp-base-lib" }
 mctp-emu-derive = { version = "0.1.0", path = "mctp-emu-derive" }
 num_enum = "0.5.7"
 serde = { version = "1.0.144", features = ["derive"] }
+smart-default = "0.6.0"
 smbus-pec = "1.0.1"
 thiserror = "1.0.35"
 tokio = { version = "1.21", features = ["full"] }

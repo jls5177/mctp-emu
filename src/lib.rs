@@ -26,6 +26,9 @@
 #[macro_use]
 extern crate c2rust_bitfields;
 
+#[macro_use]
+extern crate derive_builder;
+
 use std::{io, result};
 use tokio::sync::{mpsc, oneshot};
 
@@ -38,6 +41,9 @@ pub mod phys;
 pub enum MctpEmuError {
     #[error("Base library failed")]
     Base(#[from] mctp_base_lib::base::MctpBaseLibError),
+
+    #[error("Endpoint failed")]
+    Endpoint(#[from] crate::endpoint::Error),
 
     #[error("Physical transport failed")]
     Phys(#[from] crate::phys::Error),

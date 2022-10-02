@@ -1,9 +1,13 @@
+use crate::network::{BindingDescriptor, SocketDescriptor};
 use std::{io, result};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid socket descriptor")]
-    InvalidSocketError { sd: i32 },
+    InvalidSocketError { sd: SocketDescriptor },
+
+    #[error("invalid physical binding descriptor")]
+    InvalidBindingError { binding_id: BindingDescriptor },
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),

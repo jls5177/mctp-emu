@@ -15,7 +15,8 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::task::JoinHandle;
 
 use crate::{MctpEmuEmptyResult, MctpEmuError, MctpEmuResult, OneshotResponder};
 use mctp_base_lib::control::enums::CompletionCode::Error;
@@ -28,17 +29,18 @@ use mctp_base_lib::{
     },
 };
 
+#[derive(Debug)]
 pub enum NetworkBindingCallbackMsg {
     Receive { id: u64, buf: Bytes },
 }
 
-pub trait NetworkBinding {
+pub trait NetworkBinding: Debug + Send + Sync {
     fn transmit(&self, buf: Bytes, phy_addr: u64) -> MctpEmuEmptyResult;
     fn bind(
         &mut self,
         id: u64,
         rx_callback: Sender<NetworkBindingCallbackMsg>,
-    ) -> MctpEmuEmptyResult;
+    ) -> MctpEmuResult<JoinHandle<MctpEmuEmptyResult>>;
 }
 
 pub const MCTP_NET_ANY: u8 = 0x08;
@@ -124,10 +126,8 @@ pub trait NetDevice {
     fn queue_xmit(&self, cmd: MctpSenderCommand) -> MctpEmuEmptyResult;
 }
 
-pub trait MctpNetwork<T>
-where
-    T: NetDevice + Debug + Default,
-{
+#[async_trait::async_trait]
+pub trait MctpNetwork {
     fn socket(&self) -> int32_t;
     fn bind(&self, sd: int32_t, addr: SockAddrMctp) -> MctpEmuResult<()>;
     fn sendto(
@@ -136,9 +136,10 @@ where
         payload: Bytes,
         addr: SockAddrMctp,
     ) -> MctpEmuResult<(SockAddrMctpExt, Bytes)>;
-    fn add_netdev(&self, netdev: T) -> MctpEmuResult<uint32_t>;
 
-    fn add_physical_binding(&self, binding: Box<dyn NetworkBinding>) -> MctpEmuEmptyResult;
+    async fn add_physical_binding(&self, binding: NetworkBindingHandle) -> MctpEmuEmptyResult;
+
+    fn join_handles(&self) -> Vec<JoinHandle<MctpEmuEmptyResult>>;
 }
 
 #[derive(Debug)]
@@ -154,3 +155,10 @@ pub enum MctpSenderCommand {
         resp: Receiver<(SockAddrMctpExt, Bytes)>,
     },
 }
+
+pub type SocketDescriptor = i32;
+pub type BindingDescriptor = u64;
+pub type NetworkBindingHandle = Arc<tokio::sync::Mutex<dyn NetworkBinding>>;
+pub type ClientHandle = Arc<RwLock<Client>>;
+pub type RouteHandle = Arc<Route>;
+pub type MctpNetworkHandle = Arc<dyn MctpNetwork>;
