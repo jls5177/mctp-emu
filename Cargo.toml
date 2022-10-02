@@ -27,3 +27,8 @@ libc = "0.2.132"
 [[example]]
 name = "basic_bus_owner_loop"
 path = "examples/basic_bus_owner_loop.rs"
+
+
+[[example]]
+name = "example_virtual_network"
+path = "examples/example_virtual_network.rs"

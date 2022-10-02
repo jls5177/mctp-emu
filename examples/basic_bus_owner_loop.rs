@@ -24,7 +24,7 @@ use mctp_base_lib::{
 use mctp_emu::{
     endpoint::{MctpFlowList, MsgFlowTag},
     hex_dump::print_buf,
-    Responder,
+    OneshotResponder,
 };
 
 #[derive(Debug)]
@@ -35,7 +35,7 @@ enum PhysicalTransportCommands {
     SendMsg {
         msg_type: MessageType,
         buf: Bytes,
-        resp: Option<Responder<Bytes>>,
+        resp: Option<OneshotResponder<Bytes>>,
     },
 }
 
@@ -452,7 +452,7 @@ async fn main() -> Result<()> {
         let pending_cmd: Arc<Mutex<MctpFlowList>> = Default::default();
 
         let send_cmd_closure =
-            |msg_type: MessageType, buf: Bytes, resp: Option<Responder<Bytes>>| {
+            |msg_type: MessageType, buf: Bytes, resp: Option<OneshotResponder<Bytes>>| {
                 let pending_cmd = pending_cmd.clone();
                 let sock2 = sock_rd.clone();
                 async move {

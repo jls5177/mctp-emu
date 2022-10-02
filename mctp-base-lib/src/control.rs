@@ -11,7 +11,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use std::mem;
 
 use crate::{
-    base::{ParseError, TransportHeader},
+    base::{MctpBaseLibError, TransportHeader},
     control::{enums::*, models::*},
 };
 
@@ -44,8 +44,7 @@ impl ControlPayload {
         hdr: TransportHeader,
         control_hdr: ControlMsgHeader,
         payload: T,
-    ) -> Self
-    {
+    ) -> Self {
         ControlPayload {
             hdr,
             control_hdr,
@@ -63,9 +62,9 @@ impl ControlPayload {
         // TODO: expose "completion_code" to commonize success check here
     }
 
-    pub fn command_code(&self) -> Result<CommandCode, ParseError> {
+    pub fn command_code(&self) -> Result<CommandCode, MctpBaseLibError> {
         match self.control_hdr.command_code {
-            CommandCode::Unknown => Err(ParseError::UnknownValue {
+            CommandCode::Unknown => Err(MctpBaseLibError::UnknownValue {
                 value: format!("{:?}", self.control_hdr.command_code),
             }),
             code => Ok(code),
@@ -99,7 +98,7 @@ impl From<ControlPayload> for Bytes {
 }
 
 impl TryFrom<Bytes> for ControlPayload {
-    type Error = ParseError;
+    type Error = MctpBaseLibError;
     fn try_from(bytes: Bytes) -> core::result::Result<Self, Self::Error> {
         let hdr_size = mem::size_of::<TransportHeader>();
         let control_hdr_size = mem::size_of::<ControlMsgHeader>();
@@ -107,7 +106,7 @@ impl TryFrom<Bytes> for ControlPayload {
 
         let msg_size = bytes.len() as isize - total_hdr_size as isize;
         if msg_size < 0 {
-            return Err(ParseError::InvalidPayloadSize {
+            return Err(MctpBaseLibError::InvalidPayloadSize {
                 expected: total_hdr_size.to_string(),
                 found: bytes.len().to_string(),
             });
@@ -142,7 +141,9 @@ mod tests {
 
     #[test]
     fn test_completion_code_serialize() -> Result<()> {
-        let bytes: Vec<u8> = vec![0x01, 0x02, 0x0a, 0xc0, 0x00, 0x00, 0x02, 0x00, 0x0a, 0x10, 0x00, 0x9c];
+        let bytes: Vec<u8> = vec![
+            0x01, 0x02, 0x0a, 0xc0, 0x00, 0x00, 0x02, 0x00, 0x0a, 0x10, 0x00, 0x9c,
+        ];
 
         let ctrl_payload = ControlPayload::try_from(bytes).unwrap()?;
 
@@ -157,9 +158,11 @@ mod tests {
 
         let mut completion_code: CompletionCode;
 
-        assert_eq!(CompletionCode::ErrorInvalidData, bincode::deserialize(&bytes)?);
+        assert_eq!(
+            CompletionCode::ErrorInvalidData,
+            bincode::deserialize(&bytes)?
+        );
 
         Ok(())
     }
-
 }

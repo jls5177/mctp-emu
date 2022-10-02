@@ -26,12 +26,38 @@
 #[macro_use]
 extern crate c2rust_bitfields;
 
-use std::io;
-use tokio::sync::oneshot;
+use std::{io, result};
+use tokio::sync::{mpsc, oneshot};
 
 pub mod endpoint;
 pub mod hex_dump;
 pub mod network;
 pub mod phys;
 
-pub type Responder<T> = oneshot::Sender<io::Result<T>>;
+#[derive(Debug, thiserror::Error)]
+pub enum MctpEmuError {
+    #[error("Base library failed")]
+    Base(#[from] mctp_base_lib::base::MctpBaseLibError),
+
+    #[error("Physical transport failed")]
+    Phys(#[from] crate::phys::Error),
+
+    #[error("Network failed")]
+    Network(#[from] crate::network::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+
+    #[non_exhaustive]
+    #[error("unknown error")]
+    Unknown,
+}
+
+/// Result type used when return value is needed from methods in library.
+pub type MctpEmuResult<T> = std::result::Result<T, MctpEmuError>;
+
+/// Result type used when return value is _NOT_ needed from methods in library.
+pub type MctpEmuEmptyResult = std::result::Result<(), MctpEmuError>;
+
+pub type OneshotResponder<T> = oneshot::Sender<io::Result<T>>;
+pub type Responder<T> = mpsc::Sender<io::Result<T>>;

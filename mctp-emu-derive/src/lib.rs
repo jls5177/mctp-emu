@@ -55,34 +55,34 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
 
         impl TryFrom<Vec<u8>> for #ident {
-            type Error = ParseError;
+            type Error = MctpBaseLibError;
             fn try_from(vec: Vec<u8>) -> std::result::Result<Self, Self::Error> {
                 let struct_size = std::mem::size_of::<#ident>();
                 if vec.len() < struct_size {
-                    return Err(ParseError::InvalidPayloadSize {
+                    return Err(MctpBaseLibError::InvalidPayloadSize {
                         expected: struct_size.to_string(),
                         found: vec.len().to_string(),
                     });
                 }
                 bincode::deserialize(&vec[..])
                     .context("Failed deserializing message")
-                    .map_err(|err| ParseError::Other(err))
+                    .map_err(|err| MctpBaseLibError::Other(err))
             }
         }
 
         impl TryFrom<bytes::Bytes> for #ident {
-            type Error = ParseError;
+            type Error = MctpBaseLibError;
             fn try_from(bytes: bytes::Bytes) -> std::result::Result<Self, Self::Error> {
                 let struct_size = std::mem::size_of::<#ident>();
                 if bytes.len() < struct_size {
-                    return Err(ParseError::InvalidPayloadSize {
+                    return Err(MctpBaseLibError::InvalidPayloadSize {
                         expected: struct_size.to_string(),
                         found: bytes.len().to_string(),
                     });
                 }
                 bincode::deserialize(bytes.as_ref())
                     .context("Failed deserializing message")
-                    .map_err(|err| ParseError::Other(err))
+                    .map_err(|err| MctpBaseLibError::Other(err))
             }
         }
     };
@@ -144,34 +144,34 @@ pub fn derive_control_payload(input: proc_macro::TokenStream) -> proc_macro::Tok
         }
 
         impl TryFrom<bytes::Bytes> for #ident {
-            type Error = ParseError;
+            type Error = MctpBaseLibError;
             fn try_from(bytes: bytes::Bytes) -> std::result::Result<Self, Self::Error> {
                 let struct_size = std::mem::size_of::<#ident>();
                 if bytes.len() < struct_size {
-                    return Err(ParseError::InvalidPayloadSize {
+                    return Err(MctpBaseLibError::InvalidPayloadSize {
                         expected: struct_size.to_string(),
                         found: bytes.len().to_string(),
                     });
                 }
                 bincode::deserialize(bytes.as_ref())
                     .context("Failed deserializing message")
-                    .map_err(|err| ParseError::Other(err))
+                    .map_err(|err| MctpBaseLibError::Other(err))
             }
         }
 
         impl TryFrom<ControlPayload> for #ident {
-            type Error = ParseError;
+            type Error = MctpBaseLibError;
             fn try_from(msg: ControlPayload) -> std::result::Result<Self, Self::Error> {
                 let struct_size = std::mem::size_of::<#ident>();
                 if msg.payload.len() < struct_size {
-                    return Err(ParseError::InvalidPayloadSize {
+                    return Err(MctpBaseLibError::InvalidPayloadSize {
                         expected: struct_size.to_string(),
                         found: msg.payload.len().to_string(),
                     });
                 }
                 bincode::deserialize(msg.payload.as_ref())
                     .context("Failed deserializing message")
-                    .map_err(|err| ParseError::Other(err))
+                    .map_err(|err| MctpBaseLibError::Other(err))
             }
         }
     };

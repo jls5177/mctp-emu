@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ParseError {
+pub enum MctpBaseLibError {
     #[error("invalid payload size (found {found:?}, expected {expected:?})")]
     InvalidPayloadSize { expected: String, found: String },
 
@@ -13,7 +13,7 @@ pub enum ParseError {
 }
 
 /// Result type used when return value is needed from methods in library.
-pub type MctpEmuResult<T> = std::result::Result<T, ParseError>;
+pub type MctpBaseLibResult<T> = std::result::Result<T, MctpBaseLibError>;
 
 /// Result type used when return value is _NOT_ needed from methods in library.
-pub type EmptyResult = std::result::Result<(), ParseError>;
+pub type MctpBaseLibEmptyResult = std::result::Result<(), MctpBaseLibError>;

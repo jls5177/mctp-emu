@@ -1,4 +1,4 @@
-use crate::Responder;
+use crate::OneshotResponder;
 use bytes::Bytes;
 
 #[derive(Debug, Default, PartialEq, Ord, PartialOrd, Eq)]
@@ -10,5 +10,5 @@ pub struct MsgFlowTag {
     pub tag_owner: bool,
 }
 
-pub type MctpFlow = (MsgFlowTag, Responder<Bytes>);
+pub type MctpFlow = (MsgFlowTag, OneshotResponder<Bytes>);
 pub type MctpFlowList = Vec<MctpFlow>;

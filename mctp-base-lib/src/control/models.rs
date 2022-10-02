@@ -91,7 +91,7 @@ impl EmptyResponse {
 //     pub type Response = EmptyResponse;
 // }
 //
-// pub mod endpoint_discovery {
+// pub mod endpoint_discovery {40
 //     use crate::control::models::{EmptyRequest, EmptyResponse};
 //
 //     // Has no additional
@@ -116,7 +116,6 @@ mod tests {
 
         Ok(())
     }
-
 
     #[test]
     fn test_EmptyResponse_try_from_Bytes() -> Result<()> {
