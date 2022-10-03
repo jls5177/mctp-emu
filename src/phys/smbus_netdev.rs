@@ -10,6 +10,7 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tracing::{event, Level};
 
 use mctp_base_lib::base::*;
 
@@ -20,16 +21,19 @@ use crate::{
     MctpEmuEmptyResult, MctpEmuResult,
 };
 
+#[tracing::instrument(level = "info", skip(socket, rx_callback))]
 async fn poll_socket(
     socket: Arc<UdpSocket>,
     network_id: u64,
     rx_callback: Sender<NetworkBindingCallbackMsg>,
 ) -> MctpEmuEmptyResult {
+    event!(Level::INFO, "start polling network socket");
     loop {
         let mut buf_request: [u8; 4 * 1024] = [0; 4 * 1024];
         let (len, _) = socket.recv_from(&mut buf_request).await.unwrap();
         let buf_request = Bytes::copy_from_slice(&buf_request[..len]);
 
+        event!(Level::INFO, msg_len = len, "received a message");
         {
             let recv_buf_ref = buf_request.clone();
             tokio::spawn(async move {
@@ -50,6 +54,7 @@ async fn poll_socket(
             rx_callback.send(cmd).await;
         }
     }
+    event!(Level::INFO, "stopped polling network socket");
 }
 
 fn validate_smbus_address(addr: u64) -> MctpEmuEmptyResult {
@@ -101,7 +106,9 @@ impl SmbusNetDevBinding {
 }
 
 impl NetworkBinding for SmbusNetDevBinding {
+    #[tracing::instrument(level = "info", skip(msg))]
     fn transmit(&self, msg: Bytes, phy_addr: u64) -> MctpEmuEmptyResult {
+        tracing::info!("sending command to {phy_addr:?}");
         validate_smbus_address(phy_addr)?;
         if msg.len() >= 256 {
             todo!("Support fragmenting messages");

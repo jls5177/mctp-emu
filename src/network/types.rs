@@ -76,19 +76,47 @@ pub struct SockAddrMctpExt {
     smctp_haddr: [uint8_t; 32],
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SocketAddress {
+    Basic {
+        address: u8,
+        msg_type: u8,
+        tag: u8,
+    },
+    Extended {
+        address: u8,
+        network: u32,
+        binding_id: u64,
+        phy_addr: u64,
+    },
+}
+
+#[derive(Debug)]
+pub enum ClientCallbackMsg {
+    Receive { addr: SocketAddress, buf: Bytes },
+}
+
+#[derive(Debug)]
 pub struct Client {
-    local_addr: Option<SockAddrMctp>,
-    remote_addr: Option<SockAddrMctp>,
+    pub address: u8,
+    pub msg_type: u8,
+    pub tag: u8,
+    pub sender_chan: Sender<ClientCallbackMsg>,
+    receive_chan: Receiver<ClientCallbackMsg>,
 }
 
 impl Client {
-    pub fn new() -> Arc<RwLock<Client>> {
-        Arc::new(RwLock::new(Client::default()))
-    }
+    pub fn new(address: u8, msg_type: u8, tag: u8) -> Arc<RwLock<Self>> {
+        let (sender, mut receiver) = mpsc::channel::<ClientCallbackMsg>(32);
 
-    pub fn set_local_addr(&mut self, new: SockAddrMctp) {
-        self.local_addr.replace(new);
+        let client = Client {
+            address,
+            msg_type,
+            tag,
+            sender_chan: sender,
+            receive_chan: receiver,
+        };
+        Arc::new(RwLock::new(client))
     }
 }
 
@@ -128,14 +156,14 @@ pub trait NetDevice {
 
 #[async_trait::async_trait]
 pub trait MctpNetwork {
-    fn socket(&self) -> int32_t;
-    fn bind(&self, sd: int32_t, addr: SockAddrMctp) -> MctpEmuResult<()>;
-    fn sendto(
+    fn socket(&self) -> i32;
+    fn bind(&self, sd: i32, address: u8, msg_type: u8, tag: u8) -> MctpEmuResult<()>;
+    async fn sendto(
         &self,
-        sd: int32_t,
+        sd: i32,
         payload: Bytes,
-        addr: SockAddrMctp,
-    ) -> MctpEmuResult<(SockAddrMctpExt, Bytes)>;
+        addr: SocketAddress,
+    ) -> MctpEmuResult<(SocketAddress, Bytes)>;
 
     async fn add_physical_binding(&self, binding: NetworkBindingHandle) -> MctpEmuEmptyResult;
 

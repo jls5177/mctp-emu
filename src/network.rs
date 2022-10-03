@@ -1,4 +1,5 @@
 mod error;
+pub mod simple_network;
 mod types;
 pub mod virtual_network;
 

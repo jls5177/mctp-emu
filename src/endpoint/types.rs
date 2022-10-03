@@ -1,5 +1,7 @@
+use crate::network::ClientCallbackMsg;
 use crate::OneshotResponder;
 use bytes::Bytes;
+use tokio::sync::oneshot;
 
 #[derive(Debug, Default, PartialEq, Ord, PartialOrd, Eq)]
 #[allow(non_camel_case_types, unused)]
@@ -10,5 +12,5 @@ pub struct MsgFlowTag {
     pub tag_owner: bool,
 }
 
-pub type MctpFlow = (MsgFlowTag, OneshotResponder<Bytes>);
+pub type MctpFlow = (MsgFlowTag, oneshot::Sender<ClientCallbackMsg>);
 pub type MctpFlowList = Vec<MctpFlow>;

@@ -21,11 +21,10 @@ use mctp_base_lib::{
         ControlMsgReponseStatus, *,
     },
 };
-use mctp_emu::{
-    endpoint::{MctpFlowList, MsgFlowTag},
-    hex_dump::print_buf,
-    OneshotResponder,
-};
+use mctp_emu::{endpoint::MsgFlowTag, hex_dump::print_buf, OneshotResponder};
+
+pub type MctpFlow = (MsgFlowTag, OneshotResponder<Bytes>);
+pub type MctpFlowList = Vec<MctpFlow>;
 
 #[derive(Debug)]
 enum PhysicalTransportCommands {
@@ -377,8 +376,8 @@ impl MctpEndpointContext {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let recv_addr = "localhost:5559";
-    let send_addr = "localhost:5558";
+    let recv_addr = "localhost:5558";
+    let send_addr = "localhost:5559";
     let sock = UdpSocket::bind(&recv_addr).await?;
     sock.connect(send_addr).await?;
     let sock_rd = Arc::new(sock);
