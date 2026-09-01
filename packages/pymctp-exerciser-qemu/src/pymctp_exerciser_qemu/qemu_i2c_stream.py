@@ -313,7 +313,13 @@ class QemuI2CStreamSocket(SuperSocket):
         return None
 
     def _handle_read_req(self, payload: bytes) -> None:
-        """Answer a READ_REQ with up to ``len`` queued bytes as a READ_RSP."""
+        """Answer a READ_REQ with up to ``len`` queued bytes as a READ_RSP.
+
+        QEMU deliberately requests the capacity of its receive buffer rather
+        than the exact response length: an I2C slave cannot know how many
+        bytes the master intends to read. Returning fewer bytes is therefore
+        the normal case for short MCTP responses, not a truncated transfer.
+        """
         if len(payload) < 2:
             logger.warning("%s: READ_REQ frame too short (%d bytes)", self.id_str, len(payload))
             return
@@ -321,7 +327,7 @@ class QemuI2CStreamSocket(SuperSocket):
 
         available = len(self._read_buffer)
         if available < length:
-            logger.warning("%s: READ_REQ for %d bytes but only %d bytes queued", self.id_str, length, available)
+            logger.debug("%s: READ_REQ for %d bytes; returning %d queued bytes", self.id_str, length, available)
 
         chunk = bytes(self._read_buffer[:length])
         del self._read_buffer[:length]

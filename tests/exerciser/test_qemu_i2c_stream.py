@@ -185,7 +185,7 @@ class TestQemuI2CStreamReadRequestResponse:
         finally:
             sock.close()
 
-    def test_read_req_more_than_queued_returns_available_bytes_and_warns(self, fake_qemu, caplog):
+    def test_read_req_more_than_queued_returns_available_bytes_and_logs_debug(self, fake_qemu, caplog):
         sock = QemuI2CStreamSocket(host=fake_qemu.host, port=fake_qemu.port, id_str="test-i2c", dump_hex=False)
         try:
             fake_qemu.wait_for_connection()
@@ -193,9 +193,10 @@ class TestQemuI2CStreamReadRequestResponse:
 
             sock._read_buffer.extend(b"ab")
             fake_qemu.send_frame(I2CStreamMsgType.READ_REQ, struct.pack(">H", 10))
-            with caplog.at_level("WARNING"):
+            with caplog.at_level("DEBUG"):
                 assert sock.recv() is None
-            assert any("only 2 bytes queued" in rec.message for rec in caplog.records)
+            assert any("returning 2 queued bytes" in rec.message for rec in caplog.records)
+            assert not any(rec.levelname == "WARNING" for rec in caplog.records)
 
             msg_type, body = fake_qemu.recv_frame()
             assert msg_type == I2CStreamMsgType.READ_RSP
