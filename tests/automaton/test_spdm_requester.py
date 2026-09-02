@@ -653,6 +653,47 @@ def test_attest_now_clears_deadline_and_kicks_scheduler() -> None:
         behavior.on_stop(am, ctx)
 
 
+def test_attest_now_queued_during_a_sweep_runs_after_that_sweep() -> None:
+    behavior = SpdmRequesterBehavior(
+        targets=[{"name": "rot", "eid": 0x1D, "full_attestation": False}],
+        auto_attest=True,
+        initial_delay_s=0,
+    )
+    _, am, ctx = _behavior_with_fake_am(behavior, _scripted_responder())
+    first_started = threading.Event()
+    release_first = threading.Event()
+    calls = []
+
+    def fake_run(targets, *, timeout_s=None):
+        calls.append([target.name for target in targets])
+        if len(calls) == 1:
+            first_started.set()
+            assert release_first.wait(1)
+        now = time.time()
+        return [
+            AttestationReport(
+                target_name=target.name,
+                steps=[],
+                started_at=now,
+                finished_at=now,
+            )
+            for target in targets
+        ]
+
+    behavior._run_targets_safely = fake_run
+    behavior.on_start(am, ctx)
+    try:
+        assert first_started.wait(1)
+        behavior.attest_now()
+        release_first.set()
+        assert _wait_until(lambda: len(calls) >= 2)
+    finally:
+        release_first.set()
+        behavior.on_stop(am, ctx)
+
+    assert calls == [["rot"], ["rot"]]
+
+
 def test_on_stop_interrupts_long_initial_delay_promptly() -> None:
     behavior = SpdmRequesterBehavior(
         targets=[{"name": "rot", "eid": 0x1D}],

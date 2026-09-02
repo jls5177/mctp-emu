@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import threading
+import time
 
 import pytest
 from scapy.packet import Packet, Raw
@@ -162,6 +164,57 @@ def test_send_packet_can_atomically_record_a_completed_message() -> None:
         TraceEventKind.PACKET,
         TraceEventKind.MESSAGE,
     ]
+
+
+def test_fast_response_cannot_precede_the_completed_tx_message() -> None:
+    transcript = EndpointTranscript()
+    response = TransportHdr(
+        src=0x10,
+        dst=0x20,
+        tag=0,
+        to=0,
+        pkt_seq=0,
+        som=1,
+        eom=1,
+        msg_type=MsgTypes.CTRL,
+    ) / Raw(b"\x00")
+
+    class RacingSocket:
+        def __init__(self) -> None:
+            self.session = None
+            self.thread = None
+
+        def send(self, packet: Packet) -> None:
+            self.thread = threading.Thread(target=self.session.on_packet_received, args=(response,))
+            self.thread.start()
+            time.sleep(0.01)
+
+    socket = RacingSocket()
+    session = EndpointSession(
+        context=EndpointContext(),
+        socket=socket,
+        endpoint_name="rot",
+        observer=transcript,
+    )
+    socket.session = session
+    session.am = _FakeAM()
+    request = _fragment(seq=0, som=True, eom=True, payload=b"A")
+
+    session.send_packet(request, completed_message=[request])
+    socket.thread.join(1)
+
+    events = transcript.snapshot()
+    tx_message = next(
+        index
+        for index, event in enumerate(events)
+        if event.direction == TraceDirection.TX and event.kind == TraceEventKind.MESSAGE
+    )
+    rx_message = next(
+        index
+        for index, event in enumerate(events)
+        if event.direction == TraceDirection.RX and event.kind == TraceEventKind.MESSAGE
+    )
+    assert tx_message < rx_message
 
 
 def test_session_does_not_reply_before_request_eom() -> None:

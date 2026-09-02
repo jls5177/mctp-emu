@@ -267,13 +267,14 @@ class SpdmRequesterBehavior(Behavior):
             return dict(self._schedule)
 
     def attest_now(self, target_name: str | None = None) -> None:
-        """Clear scheduled deadline(s) and kick the scheduler worker."""
+        """Queue an explicit sweep that cannot be lost to an in-flight one."""
         now = self._time_source()
         names = [target.name for target in self._targets] if target_name is None else [target_name]
         with self._condition:
             for name in names:
                 self._schedule[name] = now
-        self._request_event.set()
+        target = None if target_name is None else self._resolve_target(target_name)
+        self._request_worker_attestation(target=target, all_targets=target_name is None)
 
     def on_attach(self, ctx: EndpointContext) -> None:
         self._ctx = ctx

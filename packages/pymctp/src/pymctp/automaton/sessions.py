@@ -219,23 +219,24 @@ class EndpointSession(DefaultSession):
 
         rq_pkt = self._replace_transport(rq_pkt, logical_transport)
         mctp_pkt_hdr = logical_transport
-        self._observe(rq_pkt, direction=TraceDirection.RX, kind=TraceEventKind.MESSAGE)
         is_request = bool(self.am.is_request(rq_pkt))
-
-        # MCTP echo is handled here because it has no upper-layer behavior.
-        if mctp_pkt_hdr.haslayer(Raw) and mctp_pkt_hdr.msg_type == 0x7F:
-            response_pkts = mctp_pkt_hdr.build_reply(self.context, bytes(mctp_pkt_hdr.payload))
-            smbus = rq_pkt.getlayer(SmbusTransportPacket)
-            uart = rq_pkt.getlayer(UartTransportPacket)
-            if smbus is not None:
-                response_pkts = smbus.build_reply(self.context, response_pkts)
-            elif uart is not None:
-                response_pkts = uart.build_reply(self.context, response_pkts)
-            self.am.send_reply(response_pkts)
-            return
 
         # Lock the session to prevent another thread trying to send a request on the bus before we finish replying
         with self._responder_lock:
+            self._observe(rq_pkt, direction=TraceDirection.RX, kind=TraceEventKind.MESSAGE)
+
+            # MCTP echo is handled here because it has no upper-layer behavior.
+            if mctp_pkt_hdr.haslayer(Raw) and mctp_pkt_hdr.msg_type == 0x7F:
+                response_pkts = mctp_pkt_hdr.build_reply(self.context, bytes(mctp_pkt_hdr.payload))
+                smbus = rq_pkt.getlayer(SmbusTransportPacket)
+                uart = rq_pkt.getlayer(UartTransportPacket)
+                if smbus is not None:
+                    response_pkts = smbus.build_reply(self.context, response_pkts)
+                elif uart is not None:
+                    response_pkts = uart.build_reply(self.context, response_pkts)
+                self.am.send_reply(response_pkts)
+                return
+
             plist = self.pending_rqs
 
             # 1) look for responses to pending requests
