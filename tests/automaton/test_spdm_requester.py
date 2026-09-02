@@ -52,6 +52,8 @@ class FakeSession:
     ) -> None:
         self.control_sent: list[tuple[Packet, int, Smbus7bitAddress | None, bool]] = []
         self.spdm_sent: list[tuple[Packet, int, Smbus7bitAddress | None, MsgTypes, bool]] = []
+        self.control_timeouts: list[float | None] = []
+        self.spdm_timeouts: list[float | None] = []
         self._responder = responder
 
     def sndrcv_control_msg(
@@ -65,6 +67,7 @@ class FakeSession:
         instance_id: int | None = None,
     ) -> Packet | None:
         self.control_sent.append((pkt, dst_eid, dst_phy_addr, threaded))
+        self.control_timeouts.append(timeout_s)
         return self._responder(pkt, dst_eid, None)
 
     def sndrcv_mctp_msg(
@@ -79,6 +82,7 @@ class FakeSession:
         threaded: bool = False,
     ) -> Packet | None:
         self.spdm_sent.append((pkt, dst_eid, dst_phy_addr, msg_type, threaded))
+        self.spdm_timeouts.append(timeout_s)
         return self._responder(pkt, dst_eid, msg_type)
 
 
@@ -696,6 +700,29 @@ def test_happy_path_full_attestation_emits_expected_request_order() -> None:
     ]
     assert all(threaded for *_, threaded in session.spdm_sent)
     assert all(threaded for *_, threaded in session.control_sent)
+
+
+def test_a_bridged_target_adds_the_pcd_timeout_to_every_request() -> None:
+    """PCD bridge latency is additional to the PA-RoT's base MCTP timeout."""
+    behavior = SpdmRequesterBehavior(
+        targets=[
+            SpdmAttestationTarget(
+                name="bridged-rot",
+                eid=0x40,
+                mctp_bridge_additional_timeout_s=6.5,
+            )
+        ],
+        timeout_s=1.0,
+        nonce_provider=lambda: b"N" * 32,
+    )
+    session, _, _ = _behavior_with_fake_am(behavior, _scripted_responder(chain=_cert_chain([16, 18, 20])))
+
+    report = behavior.attest("bridged-rot")
+
+    assert report.ok
+    assert session.control_timeouts
+    assert session.spdm_timeouts
+    assert set(session.control_timeouts + session.spdm_timeouts) == {7.5}
 
 
 def test_get_version_uses_10_then_highest_mutual_version_for_subsequent_requests() -> None:

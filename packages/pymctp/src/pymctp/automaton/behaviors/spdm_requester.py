@@ -70,6 +70,7 @@ class SpdmAttestationTarget:
     success_retry_s: float | None = None
     fail_retry_s: float | None = None
     discovery_fail_retry_s: float | None = None
+    mctp_bridge_additional_timeout_s: float = 0.0
     rsp_not_ready_max_retry: int | None = None
     rsp_not_ready_max_duration_s: float | None = None
     max_cert_chunk_size: int | None = None
@@ -521,7 +522,7 @@ class SpdmRequesterBehavior(Behavior):
         timeout_s: float | None = None,
     ) -> AttestationReport:
         report = AttestationReport(target_name=target.name, started_at=time.time())
-        timeout = self.timeout_s if timeout_s is None else timeout_s
+        timeout = (self.timeout_s if timeout_s is None else timeout_s) + target.mctp_bridge_additional_timeout_s
 
         try:
             resolved_eid = self._resolve_eid_for_attestation(report, target)
