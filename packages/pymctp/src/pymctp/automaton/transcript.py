@@ -110,7 +110,7 @@ def _protocol_identity(
         ("ControlHdrPacket", "mctp-control", "cmd_code", "rq"),
         ("PldmHdrPacket", "pldm", "cmd_code", "rq"),
         ("SpdmHdrPacket", "spdm", "request_response_code", None),
-        ("VdPciHdrPacket", "vdpci", "vdm_cmd_code", "rq"),
+        ("VdPciHdrPacket", "vdpci", "vdm_cmd_code", None),
     ):
         layer = packet.getlayer(layer_name)
         if layer is None:

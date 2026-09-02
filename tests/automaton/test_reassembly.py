@@ -17,6 +17,7 @@ from pymctp.automaton.transcript import EndpointTranscript, TraceDirection, Trac
 from pymctp.layers.mctp.control import ControlHdr, GetEndpointID
 from pymctp.layers.mctp.transport import TransportHdr, TransportHdrPacket
 from pymctp.layers.mctp.types import EndpointContext, MsgTypes
+from pymctp.layers.mctp.vdpci.vdpci import VdPciHdr
 
 
 def _fragment(
@@ -230,6 +231,24 @@ def test_transcript_extracts_control_command_identity() -> None:
     assert event.command_code == GetEndpointID().cmd_code
     assert event.is_request is True
     assert event.to_dict()["raw"] == bytes(packet).hex()
+
+
+def test_vdpci_transcript_uses_the_transport_tag_owner_for_direction() -> None:
+    # Microsoft responses may retain rq=1, so rq is not authoritative.
+    packet = (
+        TransportHdr(src=0x20, dst=0x10, tag=3, to=0, pkt_seq=0, som=1, eom=1, msg_type=MsgTypes.VDPCI)
+        / VdPciHdr(rq=True, vendor_id=0x1414, vdm_cmd_code=1)
+    )
+
+    event = packet_trace_event(
+        packet,
+        endpoint="rot",
+        direction=TraceDirection.RX,
+        kind=TraceEventKind.MESSAGE,
+    )
+
+    assert event.protocol == "vdpci"
+    assert event.is_request is False
 
 
 @pytest.mark.parametrize("limit", [0, 9])
