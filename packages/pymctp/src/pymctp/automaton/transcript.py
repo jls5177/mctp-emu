@@ -49,6 +49,7 @@ class PacketTraceEvent:
     pkt_seq: int | None = None
     msg_type: int | None = None
     protocol: str | None = None
+    protocol_type: int | None = None
     command_code: int | None = None
     is_request: bool | None = None
     detail: str | None = None
@@ -73,7 +74,7 @@ def packet_trace_event(
     """Describe the transport and protocol identity carried by ``packet``."""
     raw_packet = bytes(packet) if packet is not None else b""
     transport = packet.getlayer(TransportHdrPacket) if packet is not None else None
-    protocol, command_code, is_request = _protocol_identity(packet, transport)
+    protocol, protocol_type, command_code, is_request = _protocol_identity(packet, transport)
     return PacketTraceEvent(
         timestamp=time.monotonic() if timestamp is None else timestamp,
         endpoint=endpoint,
@@ -89,6 +90,7 @@ def packet_trace_event(
         pkt_seq=int(transport.pkt_seq) if transport is not None else None,
         msg_type=int(transport.msg_type) if transport is not None and transport.som else None,
         protocol=protocol,
+        protocol_type=protocol_type,
         command_code=command_code,
         is_request=is_request,
         detail=detail,
@@ -98,9 +100,9 @@ def packet_trace_event(
 def _protocol_identity(
     packet: Packet | None,
     transport: TransportHdrPacket | None,
-) -> tuple[str | None, int | None, bool | None]:
+) -> tuple[str | None, int | None, int | None, bool | None]:
     if packet is None:
-        return None, None, None
+        return None, None, None, None
     for layer_name, protocol, command_attr, request_attr in (
         ("ControlHdrPacket", "mctp-control", "cmd_code", "rq"),
         ("PldmHdrPacket", "pldm", "cmd_code", "rq"),
@@ -116,8 +118,9 @@ def _protocol_identity(
         else:
             is_request = getattr(layer, "is_request", None)
             request = bool(is_request()) if callable(is_request) else (bool(transport.to) if transport is not None else None)
-        return protocol, int(getattr(layer, command_attr)), request
-    return None, None, bool(transport.to) if transport is not None else None
+        protocol_type = int(getattr(layer, "pldm_type")) if protocol == "pldm" else None
+        return protocol, protocol_type, int(getattr(layer, command_attr)), request
+    return None, None, None, bool(transport.to) if transport is not None else None
 
 
 class EndpointTranscript:

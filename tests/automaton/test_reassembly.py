@@ -180,6 +180,7 @@ def test_transcript_extracts_control_command_identity() -> None:
 
     assert event.endpoint == "rot"
     assert event.protocol == "mctp-control"
+    assert event.protocol_type is None
     assert event.command_code == GetEndpointID().cmd_code
     assert event.is_request is True
     assert event.to_dict()["raw"] == bytes(packet).hex()
