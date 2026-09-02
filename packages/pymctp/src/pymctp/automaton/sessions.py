@@ -130,6 +130,12 @@ class EndpointSession(DefaultSession):
         if logical is not None:
             self._observe(logical, direction=TraceDirection.TX, kind=TraceEventKind.MESSAGE)
 
+    def send_packet(self, packet: Packet) -> None:
+        """Write one already-framed packet while recording it in the transcript."""
+        with self._responder_lock:
+            self.observe_tx_packet(packet)
+            self.socket.send(packet)
+
     @staticmethod
     def _replace_transport(original: Packet, transport: TransportHdrPacket) -> Packet:
         smbus = original.getlayer(SmbusTransportPacket)

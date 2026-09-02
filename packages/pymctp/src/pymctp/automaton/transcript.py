@@ -40,6 +40,7 @@ class PacketTraceEvent:
     direction: TraceDirection
     kind: TraceEventKind
     raw: bytes
+    transport_raw: bytes = b""
     src: int | None = None
     dst: int | None = None
     tag: int | None = None
@@ -59,6 +60,7 @@ class PacketTraceEvent:
         data["direction"] = self.direction.value
         data["kind"] = self.kind.value
         data["raw"] = self.raw.hex()
+        data["transport_raw"] = self.transport_raw.hex()
         return data
 
 
@@ -81,6 +83,7 @@ def packet_trace_event(
         direction=direction,
         kind=kind,
         raw=raw_packet,
+        transport_raw=bytes(transport) if transport is not None else b"",
         src=int(transport.src) if transport is not None else None,
         dst=int(transport.dst) if transport is not None else None,
         tag=int(transport.tag) if transport is not None else None,

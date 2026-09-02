@@ -117,6 +117,33 @@ class _FakeAM:
         self.replies.append(list(packets))
 
 
+@dataclass
+class _FakeSocket:
+    sent: list[Packet] = field(default_factory=list)
+
+    def send(self, packet: Packet) -> None:
+        self.sent.append(packet)
+
+
+def test_send_packet_records_the_raw_tx_packet() -> None:
+    transcript = EndpointTranscript()
+    socket = _FakeSocket()
+    session = EndpointSession(
+        context=EndpointContext(),
+        socket=socket,
+        endpoint_name="rot",
+        observer=transcript,
+    )
+    packet = _fragment(seq=0, som=True, eom=True, payload=b"A")
+
+    session.send_packet(packet)
+
+    assert socket.sent == [packet]
+    event = transcript.snapshot()[0]
+    assert event.direction == TraceDirection.TX
+    assert event.kind == TraceEventKind.PACKET
+
+
 def test_session_does_not_reply_before_request_eom() -> None:
     transcript = EndpointTranscript()
     session = EndpointSession(

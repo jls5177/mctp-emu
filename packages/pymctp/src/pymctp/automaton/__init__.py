@@ -4,7 +4,13 @@
 
 from .reassembly import MctpReassemblyManager, ReassemblyKey, ReassemblyUpdate, ReassemblyUpdateKind
 from .simple_endpoint import SimpleEndpointAM
-from .transcript import EndpointTranscript, PacketTraceEvent, TraceDirection, TraceEventKind
+from .transcript import (
+    EndpointTranscript,
+    PacketTraceEvent,
+    TraceDirection,
+    TraceEventKind,
+    packet_trace_event,
+)
 from .role_endpoint import RoleBasedEndpointAM
 from .roles import (
     RoleSpec,
