@@ -130,11 +130,23 @@ class EndpointSession(DefaultSession):
         if logical is not None:
             self._observe(logical, direction=TraceDirection.TX, kind=TraceEventKind.MESSAGE)
 
-    def send_packet(self, packet: Packet) -> None:
-        """Write one already-framed packet while recording it in the transcript."""
+    def send_packet(
+        self,
+        packet: Packet,
+        *,
+        completed_message: list[Packet] | None = None,
+    ) -> None:
+        """Write one framed packet and optionally complete its logical message.
+
+        The response path uses the same responder lock, so recording the
+        completed TX message before releasing it prevents a very fast response
+        from appearing in the transcript before its request.
+        """
         with self._responder_lock:
             self.observe_tx_packet(packet)
             self.socket.send(packet)
+            if completed_message is not None:
+                self.observe_tx_message(completed_message)
 
     @staticmethod
     def _replace_transport(original: Packet, transport: TransportHdrPacket) -> Packet:

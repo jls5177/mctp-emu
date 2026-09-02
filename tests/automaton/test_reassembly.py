@@ -144,6 +144,25 @@ def test_send_packet_records_the_raw_tx_packet() -> None:
     assert event.kind == TraceEventKind.PACKET
 
 
+def test_send_packet_can_atomically_record_a_completed_message() -> None:
+    transcript = EndpointTranscript()
+    socket = _FakeSocket()
+    session = EndpointSession(
+        context=EndpointContext(),
+        socket=socket,
+        endpoint_name="rot",
+        observer=transcript,
+    )
+    packet = _fragment(seq=0, som=True, eom=True, payload=b"A")
+
+    session.send_packet(packet, completed_message=[packet])
+
+    assert [event.kind for event in transcript.snapshot()] == [
+        TraceEventKind.PACKET,
+        TraceEventKind.MESSAGE,
+    ]
+
+
 def test_session_does_not_reply_before_request_eom() -> None:
     transcript = EndpointTranscript()
     session = EndpointSession(
