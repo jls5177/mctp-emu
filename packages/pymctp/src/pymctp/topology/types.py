@@ -90,6 +90,8 @@ class DeviceSpec(DataClassDictMixin):
     pool_size: int = 0
     static_eid: int | None = None
     mtu_size: int | None = None
+    max_reassembly_contexts: int | None = None
+    reassembly_timeout_s: float | None = None
     downstream: list[str] = field(default_factory=list)
     thread_kwargs: dict[str, Any] = field(default_factory=dict)
     enabled: bool = True
@@ -151,6 +153,10 @@ class DeviceSpec(DataClassDictMixin):
             context["static_eid"] = self.static_eid
         if self.mtu_size is not None:
             context["mtu_size"] = self.mtu_size
+        if self.max_reassembly_contexts is not None:
+            context["max_reassembly_contexts"] = self.max_reassembly_contexts
+        if self.reassembly_timeout_s is not None:
+            context["reassembly_timeout_s"] = self.reassembly_timeout_s
         if self.endpoint_uuid is not None:
             context["endpoint_uuid"] = self.endpoint_uuid
         context.update(deepcopy(self.context_overrides))
@@ -225,6 +231,18 @@ class MachineSpec(DataClassDictMixin):
                         f"Available devices: {known}"
                     )
                     raise ValueError(msg)
+            if device.max_reassembly_contexts is not None and not 1 <= device.max_reassembly_contexts <= 8:
+                msg = (
+                    f"Device {device.name!r} max_reassembly_contexts must be between 1 and 8, "
+                    f"got {device.max_reassembly_contexts}"
+                )
+                raise ValueError(msg)
+            if device.reassembly_timeout_s is not None and device.reassembly_timeout_s <= 0:
+                msg = (
+                    f"Device {device.name!r} reassembly_timeout_s must be positive, "
+                    f"got {device.reassembly_timeout_s}"
+                )
+                raise ValueError(msg)
             self._warn_unknown_transport(device)
             self._warn_vdpci_without_capability_set(device)
 

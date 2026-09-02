@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pymctp.topology import DeviceSpec, EidMap, MachineBuilder, MachineDefaults, MachineSpec
 
 
@@ -72,3 +74,32 @@ def test_omitting_the_timeout_keeps_the_existing_default() -> None:
     builder = MachineBuilder("board").defaults(timeout=90).defaults(count=0)
 
     assert builder.build().defaults.thread_kwargs["timeout"] == 90
+
+
+def test_reassembly_limits_flow_into_the_endpoint_context() -> None:
+    spec = (
+        MachineBuilder("board")
+        .eids({"rot": 0x20})
+        .device(
+            "rot",
+            transport={"type": "fake"},
+            max_reassembly_contexts=8,
+            reassembly_timeout_s=12.5,
+        )
+        .build()
+    )
+
+    context = spec.device("rot").to_endpoint_config(spec, spec.eids)["context"]
+    assert context["max_reassembly_contexts"] == 8
+    assert context["reassembly_timeout_s"] == 12.5
+
+
+@pytest.mark.parametrize(("value", "message"), [(0, "between 1 and 8"), (9, "between 1 and 8")])
+def test_invalid_reassembly_context_limit_is_rejected(value: int, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        (
+            MachineBuilder("board")
+            .eids({"rot": 0x20})
+            .device("rot", transport={"type": "fake"}, max_reassembly_contexts=value)
+            .build()
+        )

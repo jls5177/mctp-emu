@@ -2,7 +2,9 @@
 #
 # SPDX-License-Identifier: MIT
 
+from .reassembly import MctpReassemblyManager, ReassemblyKey, ReassemblyUpdate, ReassemblyUpdateKind
 from .simple_endpoint import SimpleEndpointAM
+from .transcript import EndpointTranscript, PacketTraceEvent, TraceDirection, TraceEventKind
 from .role_endpoint import RoleBasedEndpointAM
 from .roles import (
     RoleSpec,

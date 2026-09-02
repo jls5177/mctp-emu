@@ -109,6 +109,32 @@ def test_machine_build_start_stop_getattr_summary(monkeypatch: pytest.MonkeyPatc
     assert created[1].config.config.closed is True
 
 
+def test_machine_forwards_an_optional_packet_observer(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pymctp.topology import machine as machine_module
+
+    seen: list[object] = []
+
+    def fake_from_config(
+        config: dict[str, Any],
+        start_thread: bool = False,
+        verbose: bool = False,
+        observer=None,
+    ) -> FakeEndpoint:
+        seen.append(observer)
+        return FakeEndpoint(config["name"])
+
+    monkeypatch.setattr(machine_module.EndpointManager, "from_config", staticmethod(fake_from_config))
+    observer = object()
+    machine = Machine(
+        MachineSpec(name="unit", devices=[DeviceSpec(name="rot", transport={"type": "fake"}, eid=0x20)]),
+        observer=observer,
+    )
+
+    machine.build()
+
+    assert seen == [observer]
+
+
 def test_machine_context_manager_starts_and_stops(monkeypatch: pytest.MonkeyPatch) -> None:
     from pymctp.topology import machine as machine_module
 

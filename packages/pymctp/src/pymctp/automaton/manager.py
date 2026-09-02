@@ -7,6 +7,7 @@ import threading
 from dataclasses import field
 from enum import Enum
 from threading import Thread
+from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
 
 from mashumaro import DataClassDictMixin
@@ -16,6 +17,7 @@ from scapy.supersocket import SuperSocket
 from pymctp.automaton import EndpointSession, SimpleEndpointAM
 from pymctp.automaton.role_endpoint import RoleBasedEndpointAM
 from pymctp.automaton.roles import RoleSpec, create_endpoint, normalize_roles
+from pymctp.automaton.transcript import PacketTraceEvent
 from pymctp.layers.mctp import EndpointContext
 
 
@@ -153,7 +155,14 @@ class EndpointManager:
     am: SimpleEndpointAM | RoleBasedEndpointAM
 
     @classmethod
-    def from_config(cls, config: dict[Any, Any], start_thread=True, verbose: bool = False, prn=None):
+    def from_config(
+        cls,
+        config: dict[Any, Any],
+        start_thread=True,
+        verbose: bool = False,
+        prn=None,
+        observer: Callable[[PacketTraceEvent], None] | None = None,
+    ):
         # Ensure exerciser packages — and the socket-config types they register
         # (see SupersocketConfig) — are imported before the config's ``type`` is
         # resolved from the registry.
@@ -161,7 +170,12 @@ class EndpointManager:
 
         cfg = EndpointConfig.from_dict(config)
         socket = cfg.config.socket
-        session = EndpointSession(context=cfg.context, socket=socket)
+        session = EndpointSession(
+            context=cfg.context,
+            socket=socket,
+            endpoint_name=cfg.name or "",
+            observer=observer,
+        )
 
         common_kwargs = dict(
             socket=socket,

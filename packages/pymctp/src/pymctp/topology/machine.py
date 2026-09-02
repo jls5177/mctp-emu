@@ -9,10 +9,12 @@ from __future__ import annotations
 import logging
 import signal
 import time
+from collections.abc import Callable
 from typing import Any
 
 from pymctp.automaton.manager import EndpointManager
 from pymctp.automaton.role_endpoint import RoleBasedEndpointAM
+from pymctp.automaton.transcript import PacketTraceEvent
 
 from pymctp.topology.types import EidMap, MachineSpec
 
@@ -104,9 +106,11 @@ class Machine:
         eids: EidMap | dict[str, int] | None = None,
         start: bool = False,
         verbose: bool = False,
+        observer: Callable[[PacketTraceEvent], None] | None = None,
     ) -> None:
         self.spec = spec.with_eids(eids) if eids is not None else spec
         self.verbose = verbose
+        self.observer = observer
         self.endpoints: dict[str, EndpointManager] = {}
         if start:
             self.start()
@@ -127,9 +131,13 @@ class Machine:
                 continue
             config = device.to_endpoint_config(self.spec, self.spec.eids)
             try:
-                self.endpoints[device.name] = EndpointManager.from_config(
-                    config, start_thread=False, verbose=self.verbose
-                )
+                manager_kwargs: dict[str, Any] = {
+                    "start_thread": False,
+                    "verbose": self.verbose,
+                }
+                if self.observer is not None:
+                    manager_kwargs["observer"] = self.observer
+                self.endpoints[device.name] = EndpointManager.from_config(config, **manager_kwargs)
             except Exception as exc:
                 self.stop()
                 self.endpoints.clear()

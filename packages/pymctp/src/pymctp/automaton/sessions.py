@@ -5,7 +5,6 @@
 import threading
 import time
 from collections.abc import Callable
-import random
 from typing import TYPE_CHECKING, NamedTuple
 
 from scapy.compat import raw
@@ -17,7 +16,7 @@ from scapy.sessions import DefaultSession
 from scapy.supersocket import SuperSocket
 from scapy.utils import hexdump, linehexdump
 
-from ..layers import SmbusTransportPacket, UartTransport
+from ..layers import SmbusTransportPacket, UartTransport, UartTransportPacket
 from ..layers.mctp import (
     AnyPhysicalAddress,
     EndpointContext,
@@ -28,6 +27,14 @@ from ..layers.mctp import (
 )
 from ..layers.mctp.control import ControlHdr, ControlHdrPacket, IControlMsgPacket
 from ..layers.mctp.types import AnyPacketType, MsgTypes
+from .reassembly import MctpReassemblyManager, ReassemblyUpdateKind
+from .transcript import (
+    PacketTraceEvent,
+    TraceDirection,
+    TraceEventKind,
+    logical_transport_packet,
+    packet_trace_event,
+)
 
 if TYPE_CHECKING:
     from scapy.ansmachine import AnsweringMachine
@@ -60,7 +67,15 @@ class HandlerResponse(NamedTuple):
 class EndpointSession(DefaultSession):
     """Manages sending and receiving MCTP messages on the specified socket for a single endpoint."""
 
-    def __init__(self, *args, context: EndpointContext, socket: SuperSocket, **kwargs):
+    def __init__(
+        self,
+        *args,
+        context: EndpointContext,
+        socket: SuperSocket,
+        endpoint_name: str = "",
+        observer: Callable[[PacketTraceEvent], None] | None = None,
+        **kwargs,
+    ):
         """
         Overloaded the DefaultSession.__init__() to add type hints for class specific parameters.
         :param args: Arguments to pass to DefaultSession
@@ -71,6 +86,12 @@ class EndpointSession(DefaultSession):
         super().__init__(*args, **kwargs)
         self.context = context
         self.socket = socket
+        self.endpoint_name = endpoint_name
+        self.observer = observer
+        self.reassembly = MctpReassemblyManager(
+            max_contexts=context.max_reassembly_contexts,
+            timeout_s=context.reassembly_timeout_s,
+        )
         self.pending_rqs: list[tuple[Packet, Callable[[Packet], None]]] = []
         self._next_tag_number = 0
         self._next_instance_id = 0
@@ -80,6 +101,44 @@ class EndpointSession(DefaultSession):
         # Instead, the AnsweringMachine will register itself during initialization.
         self.am: AnsweringMachine | None = None
         self.default_handlers: dict[type, Callable[[Packet, EndpointContext], HandlerResponse | None]] = {}
+
+    def _observe(
+        self,
+        packet: Packet | None,
+        *,
+        direction: TraceDirection,
+        kind: TraceEventKind,
+        detail: str | None = None,
+    ) -> None:
+        if self.observer is None:
+            return
+        self.observer(
+            packet_trace_event(
+                packet,
+                endpoint=self.endpoint_name,
+                direction=direction,
+                kind=kind,
+                detail=detail,
+            )
+        )
+
+    def observe_tx_packet(self, packet: Packet) -> None:
+        self._observe(packet, direction=TraceDirection.TX, kind=TraceEventKind.PACKET)
+
+    def observe_tx_message(self, packets: list[Packet]) -> None:
+        logical = logical_transport_packet(packets)
+        if logical is not None:
+            self._observe(logical, direction=TraceDirection.TX, kind=TraceEventKind.MESSAGE)
+
+    @staticmethod
+    def _replace_transport(original: Packet, transport: TransportHdrPacket) -> Packet:
+        smbus = original.getlayer(SmbusTransportPacket)
+        if smbus is not None:
+            return smbus.copy(transport)
+        uart = original.getlayer(UartTransportPacket)
+        if uart is not None:
+            return uart.copy(transport)
+        return transport
 
     def register_handler(self, layer_cls: type, handler: Callable[[Packet, EndpointContext], HandlerResponse | None]):
         """
@@ -121,63 +180,39 @@ class EndpointSession(DefaultSession):
         if not rq_pkt or not rq_pkt.haslayer(TransportHdrPacket):
             return
 
-        mctp_pkt_hdr: TransportHdrPacket | None = rq_pkt.getlayer(TransportHdrPacket)
+        self._observe(rq_pkt, direction=TraceDirection.RX, kind=TraceEventKind.PACKET)
+        transport: TransportHdrPacket = rq_pkt.getlayer(TransportHdrPacket)
+        logical_transport: TransportHdrPacket | None = None
+        for update in self.reassembly.feed(transport):
+            if update.kind in (ReassemblyUpdateKind.SINGLE, ReassemblyUpdateKind.COMPLETED):
+                logical_transport = update.packet
+                continue
+            kind = {
+                ReassemblyUpdateKind.STARTED: TraceEventKind.REASSEMBLY_STARTED,
+                ReassemblyUpdateKind.CONTINUED: TraceEventKind.REASSEMBLY_CONTINUED,
+                ReassemblyUpdateKind.REJECTED: TraceEventKind.REASSEMBLY_REJECTED,
+                ReassemblyUpdateKind.EXPIRED: TraceEventKind.REASSEMBLY_EXPIRED,
+            }[update.kind]
+            detail = f"{update.key}: {update.detail}" if update.detail else str(update.key)
+            self._observe(rq_pkt, direction=TraceDirection.RX, kind=kind, detail=detail)
+
+        if logical_transport is None:
+            return
+
+        rq_pkt = self._replace_transport(rq_pkt, logical_transport)
+        mctp_pkt_hdr = logical_transport
+        self._observe(rq_pkt, direction=TraceDirection.RX, kind=TraceEventKind.MESSAGE)
         is_request = bool(self.am.is_request(rq_pkt))
-        som = bool(mctp_pkt_hdr.som)
-        eom = bool(mctp_pkt_hdr.eom)
-        msg_id = f"{mctp_pkt_hdr.tag}{mctp_pkt_hdr.dst}{mctp_pkt_hdr.src}"
 
-        # handle fragmented packets
-        # TODO: see ISOTPSession for an example of how to create a builder pattern
-        if not (som and eom):
-            frag_bytes = bytes(mctp_pkt_hdr) if som else bytes(mctp_pkt_hdr.payload)
-            if som:
-                self.context.reassembly_list[msg_id] = frag_bytes
-            else:
-                self.context.reassembly_list[msg_id] += frag_bytes
-
-            if not eom:
-                return
-
-            # collect the full message payload and remove it from the reassembly queue
-            msg_payload = self.context.reassembly_list[msg_id]
-            mctp_pkt_hdr = TransportHdrPacket(msg_payload)
-            del self.context.reassembly_list[msg_id]
-
-            # Special case: treat msg_type==0x7F and unsupported payload as an echo command
-            if mctp_pkt_hdr.haslayer(Raw) and (
-                mctp_pkt_hdr.msg_type == 0x7F or (mctp_pkt_hdr.msg_type == 0x01 and True)
-            ):
-                # strip off the transport header from the msg payload
-                mctp_pkt_hdr_len = len(mctp_pkt_hdr) - len(mctp_pkt_hdr.payload)
-                # fragment the response payload with the transport header
-                response_pkts = mctp_pkt_hdr.build_reply(self.context, msg_payload[mctp_pkt_hdr_len:])
-
-                # add the smbus header to each fragment
-                smbus_hdr: SmbusTransportPacket = rq_pkt.getlayer(SmbusTransportPacket).copy()
-                response_pkts = smbus_hdr.build_reply(self.context, response_pkts)
-
-                # time.sleep(random.uniform(0.250, 0.750))
-                # time.sleep(random.uniform(5.0, 15.0))
-
-                # send the responses
-                self.am.send_reply(response_pkts)
-                return
-            rq_pkt = rq_pkt.getlayer(SmbusTransportPacket).copy(mctp_pkt_hdr)
-        elif som and eom and mctp_pkt_hdr.haslayer(Raw) and (mctp_pkt_hdr.msg_type == 0x7F):
-            # strip off the transport header from the msg payload
-            # mctp_pkt_hdr_len = len(mctp_pkt_hdr) - len(mctp_pkt_hdr.payload)
-            # fragment the response payload with the transport header
+        # MCTP echo is handled here because it has no upper-layer behavior.
+        if mctp_pkt_hdr.haslayer(Raw) and mctp_pkt_hdr.msg_type == 0x7F:
             response_pkts = mctp_pkt_hdr.build_reply(self.context, bytes(mctp_pkt_hdr.payload))
-
-            # add the smbus header to each fragment
-            smbus_hdr: SmbusTransportPacket = rq_pkt.getlayer(SmbusTransportPacket).copy()
-            response_pkts = smbus_hdr.build_reply(self.context, response_pkts)
-
-            # time.sleep(random.uniform(0.250, 0.750))
-            # time.sleep(random.uniform(5.0, 15.0))
-
-            # send the responses
+            smbus = rq_pkt.getlayer(SmbusTransportPacket)
+            uart = rq_pkt.getlayer(UartTransportPacket)
+            if smbus is not None:
+                response_pkts = smbus.build_reply(self.context, response_pkts)
+            elif uart is not None:
+                response_pkts = uart.build_reply(self.context, response_pkts)
             self.am.send_reply(response_pkts)
             return
 
@@ -327,6 +362,8 @@ class EndpointSession(DefaultSession):
         :return: the received packet or None
         """
         with self._responder_lock:
+            self.observe_tx_packet(pkt)
+            self.observe_tx_message([pkt])
             a, b = sndrcv(self.socket, pkt, timeout=int(timeout_s) if timeout_s else None, session=self)
             if len(a) > 0:
                 return a[0][1]
@@ -361,6 +398,8 @@ class EndpointSession(DefaultSession):
 
         # send event
         with self._responder_lock:
+            self.observe_tx_packet(pkt)
+            self.observe_tx_message([pkt])
             self.socket.send(pkt)
 
         # wait for completion

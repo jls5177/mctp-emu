@@ -265,10 +265,14 @@ class SimpleEndpointAM(AnsweringMachine):
             for index, p in enumerate(packets):
                 if index and self.inter_packet_delay_s:
                     time.sleep(self.inter_packet_delay_s)
+                if self.session is not None:
+                    self.session.observe_tx_packet(p)
                 if send_function is not None:
                     send_function(p)
                 elif self.socket:
                     self.socket.send(p)
+            if self.session is not None:
+                self.session.observe_tx_message(packets)
 
     def print_reply(self, req: AnyPacketType, reply: AnyPacketType) -> None:
         if isinstance(reply, PacketList):

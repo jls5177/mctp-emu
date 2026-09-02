@@ -202,6 +202,10 @@ class EndpointContext(DataClassDictMixin):
     mctp_responses: MctpResponseList | None = None
     routing_table_ready: bool = False
     routing_table: list[RoutingTableEntry] = dataclasses.field(default_factory=list)
+    max_reassembly_contexts: int = 1
+    reassembly_timeout_s: float = 5.0
+    # Deprecated compatibility view. EndpointSession now owns validated
+    # reassembly state through MctpReassemblyManager.
     reassembly_list: dict[str, bytes] = dataclasses.field(default_factory=dict)
     msg_type_context: dict[str, Any] = dataclasses.field(default_factory=lambda: defaultdict(dict))
 
